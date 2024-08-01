@@ -403,6 +403,52 @@ macro_rules! methods {
     }
 }
 
+#[macro_export]
+macro_rules! methods_safe {
+    (
+        $rtself_class: ty,
+        $rtself_name: ident,
+        $(
+            fn $method_name: ident
+            ($($arg_name: ident: &$arg_type: ty),*) -> $return_type: ty $body: block
+            $(,)?
+        )*
+    ) => {
+        $(
+            #[allow(unused_mut)]
+            pub extern fn $method_name(argc: $crate::types::Argc,
+                                       argv: *const $crate::AnyObject,
+                                       mut $rtself_name: $rtself_class) -> $return_type {
+                let _arguments = $crate::util::parse_arguments(argc, argv);
+                let mut _i = 0;
+
+                $(
+                    let $arg_name =
+                        &_arguments
+                            .get(_i)
+                            .ok_or_else(|| {
+                                <$crate::AnyException as $crate::Exception>::new("ArgumentError",
+                                    Some(&format!(
+                                        "Argument '{}: {}' not found for method '{}'",
+                                        stringify!($arg_name),
+                                        stringify!($arg_type),
+                                        stringify!($method_name)
+                                    ))
+                                )
+                            }).and_then(|argument| {
+                                <$crate::AnyObject as $crate::Object>
+                                    ::try_convert_to::<$arg_type>(argument)
+                            });
+
+                    _i += 1;
+                )*
+
+                $body
+            }
+        )*
+    }
+  }
+
 /// Makes a Rust struct wrappable for Ruby objects.
 ///
 /// **Note:** Currently to be able to use `wrappable_struct!` macro, you should include
